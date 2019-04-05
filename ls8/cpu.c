@@ -27,7 +27,7 @@ void cpu_load(struct cpu *cpu, char *filename)
   int address = 0;
 
   while(fgets(line, 100, file)) {
-    if(line[0] == '#') continue;
+    if(line[0] == '#' || line[0] == '\n') continue;
     long l = strtol(line, NULL, 2);
     cpu->ram[address++] = l;
   }
@@ -40,12 +40,44 @@ void cpu_load(struct cpu *cpu, char *filename)
  */
 void alu(struct cpu *cpu, enum alu_op op, unsigned char *regA, unsigned char *regB)
 {
+  char cmp_val;
   switch (op) {
       case ALU_MUL:
           *regA *= *regB;
           break;
       case ALU_ADD:
           *regA += *regB;
+          break;
+      case ALU_CMP:
+          if(*regA < *regB){
+              cmp_val = (1 << 2);
+              cpu->fl_register = cpu->fl_register | cmp_val;
+              //printf("Register A Less should be one: %d\n", cpu->fl_register);
+          } else {
+              cmp_val = ~(1 << 2);
+              cpu->fl_register = cpu->fl_register & cmp_val;
+              //printf("Register A Less should be zero: %d\n", cpu->fl_register);
+          }
+
+          if(*regA > *regB){
+              cmp_val = (1 << 1);
+              cpu->fl_register = cpu->fl_register | cmp_val;
+              //printf("Register A Greater should be one: %d\n", cpu->fl_register);
+          } else {
+              cmp_val = ~(1 << 1);
+              cpu->fl_register = cpu->fl_register & cmp_val;
+              //printf("Register A Greater should be zero: %d\n", cpu->fl_register);
+          }
+
+          if(*regA == *regB){
+              cmp_val = (1 << 0);
+              cpu->fl_register = cpu->fl_register | cmp_val;
+              //printf("Register Equal should be one: %d\n", cpu->fl_register);
+          } else {
+              cmp_val = ~(1 << 0);
+              cpu->fl_register = cpu->fl_register & cmp_val;
+              //printf("Register Equal should be zero: %d\n", cpu->fl_register);
+          }
           break;
   }
 }
@@ -65,12 +97,15 @@ void cpu_run(struct cpu *cpu)
 
     switch(command) {
         case LDI:
+            //printf("LDI\n");
             operand_one = cpu_ram_read(cpu);
             operand_two = cpu_ram_read(cpu);
             cpu->registers[operand_one] = (unsigned char)operand_two;
+            //printf("LDI Register Value: %d\n", cpu->registers[operand_one]);
             cpu->pc++;
             break;
         case PRN:
+            //printf("PRN\n");
             operand_one = cpu_ram_read(cpu);
             printf("%d\n", cpu->registers[operand_one]);
             cpu->pc++;
@@ -100,6 +135,47 @@ void cpu_run(struct cpu *cpu)
             cpu->ram[--top] = (unsigned char)reg_int;
             cpu->pc++;
             break;
+        case JEQ:
+            //printf("JEQ\n");
+            operand_one = cpu_ram_read(cpu);
+            address = cpu->registers[operand_one];
+            //printf("JEQ FLAG: %d\n", cpu->fl_register);
+            if(cpu->fl_register == 1){
+                //printf("In JEQ if statement\n");
+                cpu->pc = address;
+                break;
+            } else {
+                cpu->pc++;
+                break;
+            }
+        case JNE:
+            //printf("JNE\n");
+            operand_one = cpu_ram_read(cpu);
+            address = cpu->registers[operand_one];
+            //printf("JNE FLAG: %d\n", cpu->fl_register);
+            if(cpu->fl_register == 4 || cpu->fl_register == 2 ||  cpu->fl_register == 0){
+                //printf("In JNE if statement\n");
+                //printf("JNE IF statement address: %d \n", address);
+                cpu->pc = address;
+                break;
+            } else {
+                cpu->pc++;
+                break;
+            }
+        case CMP:
+            //printf("CMP\n");
+            operand_one = cpu_ram_read(cpu);
+            operand_two = cpu_ram_read(cpu);
+            //printf("Register A in CMP: %d \n", cpu->registers[operand_one]);
+            //printf("Register B in CMP: %d \n", cpu->registers[operand_two]);
+            alu(cpu, ALU_CMP, &cpu->registers[operand_one], &cpu->registers[operand_two]);
+            cpu->pc++;
+            break;
+        case JUMP:
+            operand_one = cpu_ram_read(cpu);
+            address = cpu->registers[operand_one];
+            cpu->pc = address;
+            break;
         case RET:
             cpu->pc = cpu->ram[top++];
             break;
@@ -124,6 +200,7 @@ void cpu_run(struct cpu *cpu)
  */
 void cpu_init(struct cpu *cpu)
 {
+  cpu->fl_register = '\0';
   cpu->pc = 0;
   memset(cpu->registers, '0',  8 * sizeof(char));
   memset(cpu->ram, '0',  256 * sizeof(char));
